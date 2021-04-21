@@ -22,9 +22,9 @@ class FriendTableViewCell: UITableViewCell {
         super.awakeFromNib()
     }
 
-    func setUp(user: UserObject, canInvite: Bool) {
-        name.text = user.name
-        id.text = user.id
+    func setUp(userName: String, userId: String, canInvite: Bool) {
+        name.text = userName
+        id.text = userId
         
         if canInvite {
             inviteButton.tintColor = .green

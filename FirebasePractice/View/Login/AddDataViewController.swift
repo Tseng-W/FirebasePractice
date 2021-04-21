@@ -9,12 +9,12 @@ import UIKit
 import Firebase
 
 protocol AddDataViewDelegate: AnyObject {
-    func addData(object: AuthorObject, completion: @escaping (Result<String, Error>) -> Void)
+    func addData(object: ArticleObject, completion: @escaping (Result<String, Error>) -> Void)
 }
 
 class AddDataViewController: UIViewController {
     
-    var newAuthor: AuthorObject?
+    var newAuthor: ArticleObject?
     
     var delegate: AddDataViewDelegate?
     
@@ -90,12 +90,12 @@ extension AddDataViewController: UITextFieldDelegate {
               let title = titleField.text,
               let content = contentField.text,
               let authorId = authorIdField.text,
-              let tag = AuthorTag.index(segment.selectedSegmentIndex) else {
+              let tag = ArticleTag.index(segment.selectedSegmentIndex) else {
             submitButton.isEnabled = false
             submitButton.backgroundColor = UIColor.B4
             return }
         submitButton.isEnabled = true
         submitButton.backgroundColor = UIColor.B1
-        newAuthor =  AuthorObject(docId: nil, id: id, title: title, content: content, tag: tag, authorId: authorId, createdTime: Timestamp.init(date: Date()))
+        newAuthor =  ArticleObject(docId: nil, id: id, title: title, content: content, tag: tag, authorId: authorId, createdTime: Timestamp.init(date: Date()))
     }
 }

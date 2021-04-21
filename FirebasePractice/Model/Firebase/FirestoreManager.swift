@@ -9,7 +9,7 @@ import UIKit
 import FirebaseFirestoreSwift
 import Firebase
 
-enum AuthorTag: String, Codable {
+enum ArticleTag: String, Codable {
     case beauty
     case gossiping
     case schoolLife
@@ -20,7 +20,7 @@ enum AuthorTag: String, Codable {
         case schoolLife = "SchoolLife"
     }
     
-    static func index(_ index: Int) -> AuthorTag? {
+    static func index(_ index: Int) -> ArticleTag? {
         switch index {
         case 0:
             return .beauty
@@ -34,12 +34,12 @@ enum AuthorTag: String, Codable {
     }
 }
 
-struct AuthorObject: Codable, Identifiable {
+struct ArticleObject: Codable, Identifiable {
     @DocumentID var docId: String?
     let id: String
     let title: String
     let content: String
-    let tag: AuthorTag
+    let tag: ArticleTag
     let authorId: String
     let createdTime: Timestamp
     
@@ -59,8 +59,14 @@ struct UserObject: Codable, Identifiable {
     var friends: [String]
     
     static func createUserObject(user: UserAccount) -> UserObject {
-        let tempName = user.email.components(separatedBy: "@")[0]
-        return UserObject(docID: nil, id: tempName, email: user.email, name: tempName, invites: [], friends: [])
+        let subMail = user.email.components(separatedBy: "@")[0]
+        return UserObject(
+            docID: nil,
+            id: "id_\(subMail)",
+            email: user.email,
+            name: "name_\(subMail)",
+            invites: [],
+            friends: [])
     }
     
     mutating func addInvites(docId: String) {
@@ -81,34 +87,63 @@ enum Collections: String {
     case users
 }
 
+enum WhereType {
+    case greater
+    case greaterOrEqual
+    case equal
+    case euqalOrLess
+    case less
+}
+
+struct CollectionFilter {
+    let type: WhereType
+    let paramName: String
+    let value: String
+}
+
 class FirestoreManager {
     
     static let shared = FirestoreManager()
     
     private let db = Firestore.firestore()
-    
-    func getAllData<T: Decodable>(collection: Collections, completion: @escaping (Result<[T], Error>) -> Void) {
-        db.collection(collection.rawValue).getDocuments {
+
+    func getData<T: Decodable>(collection: Collections, filter: [CollectionFilter]?, completion: @escaping (Result<[T], Error>) -> Void) {
+        let collectionPath = db.collection(collection.rawValue)
+        
+        if let filter = filter {
+            filter.forEach {
+                filter in
+                switch filter.type {
+                case .greater:
+                    collectionPath.whereField(filter.paramName, isGreaterThan: filter.value)
+                case .greaterOrEqual:
+                    collectionPath.whereField(filter.paramName, isGreaterThanOrEqualTo: filter.value)
+                case .equal:
+                    collectionPath.whereField(filter.paramName, isEqualTo: filter.value)
+                case .euqalOrLess:
+                    collectionPath.whereField(filter.paramName, isLessThanOrEqualTo: filter.value)
+                case .less:
+                    collectionPath.whereField(filter.paramName, isLessThan: filter.value)
+                }
+            }
+        }
+        
+        collectionPath.getDocuments {
             snapShot, error in
-            guard let snapShot = snapShot else { return }
-            let docs = snapShot.documents.compactMap {
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            let result = snapShot?.documents.compactMap {
                 snapShot in
                 try? snapShot.data(as: T.self)
             }
-            completion(Result.success(docs))
-        }
-    }
-    
-    func getDocData<T: Decodable>(collection: Collections, docID: String, completion: @escaping (Result<T, Error>) -> Void) {
-        db.collection(collection.rawValue).document(docID).getDocument {
-            document, error in
-            if let error = error {
-                completion(.failure(error))
+            
+            if let result = result {
+                completion(.success(result))
             }
-            if let document = document {
-                let data = try? document.data(as: T.self)
-                completion(.success(data!))
-            }
+            completion(.success([]))
         }
     }
     
@@ -119,15 +154,16 @@ class FirestoreManager {
             if let snapShot = snapShot,
                snapShot.documents.count > 0 {
                 let userObject = try? snapShot.documents.first?.data(as: UserObject.self)
-                UserDefaults.standard.setValue(userObject!.docID, forKey: "selfID")
+                UserDefaults.standard.setValue(userObject!.docID, forKey: "selfId")
                 completion(.success(userObject!))
             } else {
-                let newUser = UserObject.createUserObject(user: user)
+                var newUser = UserObject.createUserObject(user: user)
                 self.writeDate(collection: .users, data: newUser) {
                     result in
                     switch result {
                     case .success(let docID):
-                        UserDefaults.standard.setValue(docID, forKey: "selfID")
+                        newUser.docID = docID
+                        UserDefaults.standard.setValue(docID, forKey: "selfId")
                         completion(.success(newUser))
                     case .failure(let error):
                         completion(.failure(error))
@@ -167,7 +203,8 @@ class FirestoreManager {
         // MARK: 移除對方的邀請，這時雙方不觸發事件
         var newInvites = inviteUser.invites
         guard let index = newInvites.firstIndex(of: acceptUser.docID!) else { return }
-        db.collection(Collections.users.rawValue).document(inviteUser.docID!).updateData(["invites": newInvites.remove(at: index)]) {
+        newInvites.remove(at: index)
+        db.collection(Collections.users.rawValue).document(inviteUser.docID!).updateData(["invites": newInvites]) {
             error in
             if let error = error{ completion(.failure(error)) }
         }

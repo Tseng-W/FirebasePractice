@@ -10,7 +10,7 @@ import UIKit
 protocol LoginUserInputDelegate: AnyObject {
     func didChangeUserData(_ view: LoginView, data: UserAccount)
     func doSubmit(_ view: LoginView, type: LoginType)
-    func getAll(_ view: LoginView, completion: @escaping (Result<[AuthorObject], Error>) -> Void)
+    func getAll(_ view: LoginView, completion: @escaping (Result<[ArticleObject], Error>) -> Void)
 }
 
 struct UserAccount {

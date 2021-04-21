@@ -32,11 +32,11 @@ class LoginViewController: UIViewController {
         }
     }
     
-    func getAuthorData(completion: @escaping  (Result<[AuthorObject], Error>) -> Void) {
-        FirestoreManager.shared.getAllData(collection: .articles, completion: completion)
+    func getAuthorData(completion: @escaping  (Result<[ArticleObject], Error>) -> Void) {
+        FirestoreManager.shared.getData(collection: .articles, filter: nil, completion: completion)
     }
     
-    func writeAuthorDate(data: AuthorObject, completion: @escaping (Result<String, Error>) -> Void) {
+    func writeAuthorDate(data: ArticleObject, completion: @escaping (Result<String, Error>) -> Void) {
         FirestoreManager.shared.writeDate(collection: .articles, data: data, completion: completion)
     }
     
@@ -49,10 +49,15 @@ class LoginViewController: UIViewController {
                 FirestoreManager.shared.getUserInfo(user: user) {
                     data in
                     switch data {
-                    case .success(let data):
+                    case .success(let userObject):
                         self.navigationItem.title = "Writing"
                         self.tabBarItem.title = "Writing"
-                        self.loginView.setResult(result: .success(data))
+                        self.loginView.setResult(result: .success(userObject))
+                        
+                        if let navVC = self.tabBarController!.viewControllers![2] as? UINavigationController,
+                           let friendVC = navVC.viewControllers.first as? FriendsViewController {
+                            friendVC.preloadUserData(user: userObject)
+                        }
                     case .failure(let error): self.loginView.setResult(result: .failure(error))
                     }
                 }
@@ -71,11 +76,16 @@ class LoginViewController: UIViewController {
                 FirestoreManager.shared.getUserInfo(user: user) {
                     data in
                     switch data {
-                    case .success(let data):
+                    case .success(let userObject):
                         self.navigationItem.title = "Writing"
                         self.tabBarItem.title = "Writing"
-                        self.loginView.setResult(result: .success(data))
-                    case .failure(let error):                        self.loginView.setResult(result: .failure(error))
+                        self.loginView.setResult(result: .success(userObject))
+                        if let navVC = self.tabBarController!.viewControllers![2] as? UINavigationController,
+                           let friendVC = navVC.viewControllers.first as? FriendsViewController {
+                            friendVC.preloadUserData(user: userObject)
+                        }
+                    case .failure(let error):
+                        self.loginView.setResult(result: .failure(error))
                     }
                 }
             case .failure(let error):
@@ -86,7 +96,7 @@ class LoginViewController: UIViewController {
 }
 
 extension LoginViewController: LoginUserInputDelegate {
-    func getAll(_ view: LoginView, completion: @escaping (Result<[AuthorObject], Error>) -> Void) {
+    func getAll(_ view: LoginView, completion: @escaping (Result<[ArticleObject], Error>) -> Void) {
         getAuthorData(completion: completion)
     }
     
@@ -112,7 +122,7 @@ extension LoginViewController: LoginUserInputDelegate {
 }
 
 extension LoginViewController: AddDataViewDelegate {
-    func addData(object: AuthorObject, completion: @escaping (Result<String, Error>) -> Void) {
+    func addData(object: ArticleObject, completion: @escaping (Result<String, Error>) -> Void) {
         writeAuthorDate(data: object, completion: completion)
     }
 }
