@@ -109,68 +109,117 @@ class FirestoreManager {
 
     func getData<T: Decodable>(collection: Collections, filter: [CollectionFilter]?, completion: @escaping (Result<[T], Error>) -> Void) {
         let collectionPath = db.collection(collection.rawValue)
+        var query: Query?
         
         if let filter = filter {
             filter.forEach {
                 filter in
                 switch filter.type {
                 case .greater:
-                    collectionPath.whereField(filter.paramName, isGreaterThan: filter.value)
+                    query = query == nil ? collectionPath.whereField(filter.paramName, isGreaterThan: filter.value) :
+                    query!.whereField(filter.paramName, isGreaterThan: filter.value)
                 case .greaterOrEqual:
-                    collectionPath.whereField(filter.paramName, isGreaterThanOrEqualTo: filter.value)
+                    query = query == nil ? collectionPath.whereField(filter.paramName, isGreaterThanOrEqualTo: filter.value) :
+                    query!.whereField(filter.paramName, isGreaterThanOrEqualTo: filter.value)
                 case .equal:
-                    collectionPath.whereField(filter.paramName, isEqualTo: filter.value)
+                    query = query == nil ? collectionPath.whereField(filter.paramName, isEqualTo: filter.value) :
+                    query!.whereField(filter.paramName, isEqualTo: filter.value)
                 case .euqalOrLess:
-                    collectionPath.whereField(filter.paramName, isLessThanOrEqualTo: filter.value)
+                    query = query == nil ? collectionPath.whereField(filter.paramName, isLessThanOrEqualTo: filter.value) :
+                    query!.whereField(filter.paramName, isLessThanOrEqualTo: filter.value)
                 case .less:
-                    collectionPath.whereField(filter.paramName, isLessThan: filter.value)
+                    query = query == nil ? collectionPath.whereField(filter.paramName, isLessThan: filter.value) :
+                    query!.whereField(filter.paramName, isLessThan: filter.value)
                 }
             }
         }
         
-        collectionPath.getDocuments {
-            snapShot, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            let result = snapShot?.documents.compactMap {
-                snapShot in
-                try? snapShot.data(as: T.self)
-            }
-            
-            if let result = result {
+        if let query = query {
+            query.getDocuments {
+                snapShot, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                guard let snapShot = snapShot else { return }
+                
+                let result = snapShot.documents.compactMap {
+                    snapShot in
+                    try? snapShot.data(as: T.self)
+                }
+                
                 completion(.success(result))
             }
-            completion(.success([]))
+        } else {
+            collectionPath.getDocuments {
+                snapShot, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let snapShot = snapShot else { return }
+                
+                let result = snapShot.documents.compactMap {
+                    snapShot in
+                    try? snapShot.data(as: T.self)
+                }
+                
+                completion(.success(result))
+            }
         }
     }
     
     func getUserInfo(user: UserAccount, completion: @escaping (Result<UserObject, Error>) -> Void) {
-        db.collection(Collections.users.rawValue).whereField("email", isEqualTo: user.email).getDocuments {
-            snapShot, error in
-            if let error = error { completion(.failure(error)) }
-            if let snapShot = snapShot,
-               snapShot.documents.count > 0 {
-                let userObject = try? snapShot.documents.first?.data(as: UserObject.self)
-                UserDefaults.standard.setValue(userObject!.docID, forKey: "selfId")
-                completion(.success(userObject!))
-            } else {
-                var newUser = UserObject.createUserObject(user: user)
-                self.writeDate(collection: .users, data: newUser) {
-                    result in
-                    switch result {
-                    case .success(let docID):
-                        newUser.docID = docID
-                        UserDefaults.standard.setValue(docID, forKey: "selfId")
-                        completion(.success(newUser))
-                    case .failure(let error):
-                        completion(.failure(error))
+        getData(collection: Collections.users, filter: [CollectionFilter(type: .equal, paramName: "email", value: user.email)]) {
+            (result: Result<[UserObject], Error>) in
+            switch result {
+            case .success(let userObjects):
+                if userObjects.count > 0 {
+                    completion(.success(userObjects.first!))
+                } else {
+                    var newUser = UserObject.createUserObject(user: user)
+                    self.writeDate(collection: .users, data: newUser) {
+                        result in
+                        switch result {
+                        case .success(let docID):
+                            newUser.docID = docID
+                            UserDefaults.standard.setValue(docID, forKey: "selfId")
+                            completion(.success(newUser))
+                        case .failure(let error):
+                            completion(.failure(error))
+                        }
                     }
                 }
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
+        
+        
+//        db.collection(Collections.users.rawValue).whereField("email", isEqualTo: user.email).getDocuments {
+//            snapShot, error in
+//            if let error = error { completion(.failure(error)) }
+//            if let snapShot = snapShot,
+//               snapShot.documents.count > 0 {
+//                let userObject = try? snapShot.documents.first?.data(as: UserObject.self)
+//                UserDefaults.standard.setValue(userObject!.docID, forKey: "selfId")
+//                completion(.success(userObject!))
+//            } else {
+//                var newUser = UserObject.createUserObject(user: user)
+//                self.writeDate(collection: .users, data: newUser) {
+//                    result in
+//                    switch result {
+//                    case .success(let docID):
+//                        newUser.docID = docID
+//                        UserDefaults.standard.setValue(docID, forKey: "selfId")
+//                        completion(.success(newUser))
+//                    case .failure(let error):
+//                        completion(.failure(error))
+//                    }
+//                }
+//            }
+//        }
     }
     
     func updateInvites(newUser: UserObject, completion: @escaping (Result<UserObject, Error>) -> Void) {
