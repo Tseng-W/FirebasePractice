@@ -53,7 +53,7 @@ class LoginViewController: UIViewController {
                         self.navigationItem.title = "Writing"
                         self.tabBarItem.title = "Writing"
                         self.loginView.setResult(result: .success(data))
-                    case .failure(let error):                        self.loginView.setResult(result: .failure(error))
+                    case .failure(let error): self.loginView.setResult(result: .failure(error))
                     }
                 }
             case .failure(let error):

@@ -55,12 +55,24 @@ struct UserObject: Codable, Identifiable {
     let id: String
     let email: String
     let name: String
-    let invites: [String]
-    let friends: [String]
+    var invites: [String]
+    var friends: [String]
     
     static func createUserObject(user: UserAccount) -> UserObject {
         let tempName = user.email.components(separatedBy: "@")[0]
         return UserObject(docID: nil, id: tempName, email: user.email, name: tempName, invites: [], friends: [])
+    }
+    
+    mutating func addInvites(docId: String) {
+        invites.append(docId)
+    }
+    
+    mutating func addFriends(docId: String) {
+        friends.append(docId)
+    }
+    
+    func canInvited(target: String) -> Bool {
+        return !invites.contains(target)
     }
 }
 
@@ -87,6 +99,19 @@ class FirestoreManager {
         }
     }
     
+    func getDocData<T: Decodable>(collection: Collections, docID: String, completion: @escaping (Result<T, Error>) -> Void) {
+        db.collection(collection.rawValue).document(docID).getDocument {
+            document, error in
+            if let error = error {
+                completion(.failure(error))
+            }
+            if let document = document {
+                let data = try? document.data(as: T.self)
+                completion(.success(data!))
+            }
+        }
+    }
+    
     func getUserInfo(user: UserAccount, completion: @escaping (Result<UserObject, Error>) -> Void) {
         db.collection(Collections.users.rawValue).whereField("email", isEqualTo: user.email).getDocuments {
             snapShot, error in
@@ -94,19 +119,31 @@ class FirestoreManager {
             if let snapShot = snapShot,
                snapShot.documents.count > 0 {
                 let userObject = try? snapShot.documents.first?.data(as: UserObject.self)
+                UserDefaults.standard.setValue(userObject!.docID, forKey: "selfID")
                 completion(.success(userObject!))
             } else {
                 let newUser = UserObject.createUserObject(user: user)
                 self.writeDate(collection: .users, data: newUser) {
                     result in
                     switch result {
-                    case .success(_):
+                    case .success(let docID):
+                        UserDefaults.standard.setValue(docID, forKey: "selfID")
                         completion(.success(newUser))
                     case .failure(let error):
                         completion(.failure(error))
                     }
                 }
             }
+        }
+    }
+    
+    func updateInvites(newUser: UserObject, completion: @escaping (Result<UserObject, Error>) -> Void) {
+        db.collection(Collections.users.rawValue).document(newUser.docID!).updateData(["invites": newUser.invites]) {
+            error in
+            if let error = error {
+                completion(.failure(error))
+            }
+            completion(.success(newUser))
         }
     }
     
@@ -122,6 +159,31 @@ class FirestoreManager {
                     try? snapShot.data(as: UserObject.self)
                 }
                 completion(.success(users))
+            }
+        }
+    }
+    
+    func connectFriend(acceptUser: UserObject, inviteUser: UserObject, completion: @escaping (Result<UserObject, Error>) -> Void) {
+        // MARK: 移除對方的邀請，這時雙方不觸發事件
+        var newInvites = inviteUser.invites
+        guard let index = newInvites.firstIndex(of: acceptUser.docID!) else { return }
+        db.collection(Collections.users.rawValue).document(inviteUser.docID!).updateData(["invites": newInvites.remove(at: index)]) {
+            error in
+            if let error = error{ completion(.failure(error)) }
+        }
+        
+        // MARK: 優先同意方先加好友，以利被同意方判斷是否為首次加入好友
+        var newFriends = acceptUser.friends
+        newFriends.append(inviteUser.docID!)
+        db.collection(Collections.users.rawValue).document(acceptUser.docID!).updateData(["friends": newFriends]) { [weak self]
+            error in
+            if let error = error { completion(.failure(error)) }
+            newFriends = inviteUser.friends
+            newFriends.append(acceptUser.docID!)
+            self?.db.collection(Collections.users.rawValue).document(inviteUser.docID!).updateData(["friends": newFriends]) {
+                error in
+                if let error = error { completion(.failure(error)) }
+                completion(.success(acceptUser))
             }
         }
     }
@@ -159,7 +221,7 @@ class FirestoreManager {
         }
     }
     
-    func listen(collection: Collections, completion: @escaping (Result<[DocumentChange], Error>) -> Void) {
+    func addListener(collection: Collections, completion: @escaping (Result<[DocumentChange], Error>) -> Void) {
         db.collection(collection.rawValue).addSnapshotListener { (snapShot, error) in
             if let error = error {
                 completion(.failure(error))
